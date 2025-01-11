@@ -1,0 +1,49 @@
+services:
+  highload-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/app
+      - gosrc:/go
+    networks:
+      - highload-network
+    ports:
+      - '8088:80'
+    depends_on:
+      - highload-pgsql
+    restart: unless-stopped
+  highload-pgsql:
+    build: 
+      context: ./docker/pgsql
+      dockerfile: Dockerfile
+    ports:
+      - '${PGSQL_PORT:-5432}:5432'
+    environment:
+      PGPASSWORD: '${PGSQL_PASSWORD:-secret}'
+      POSTGRES_DB: '${PGSQL_DB}'
+      POSTGRES_USER: '${PGSQL_USER}'
+      POSTGRES_PASSWORD: '${PGSQL_PASSWORD:-secret}'
+    volumes:
+      - highload-pgsql:/var/lib/postgresql/data
+    networks:
+      - highload-network
+    healthcheck:
+      test:
+        - CMD
+        - pg_isready
+        - '-q'
+        - '-d'
+        - '${PGSQL_DB}'
+        - '-U'
+        - '${PGSQL_USER}'
+      retries: 3
+      timeout: 5s
+    restart: unless-stopped
+
+volumes:
+  gosrc:
+  highload-pgsql:
+networks:
+  highload-network:
+    driver: bridge
