@@ -1,12 +1,15 @@
 package infrastructure
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/IKolyas/otus-highload/internal/application"
+	"github.com/IKolyas/otus-highload/internal/application/service"
+	"github.com/IKolyas/otus-highload/internal/domain"
+	"github.com/IKolyas/otus-highload/internal/infrastructure/repository"
 	"github.com/go-playground/validator"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -33,8 +36,6 @@ type (
 var xv = &XValidator{
 	validator: validator.New(),
 }
-
-var userUC = application.UserUseCase{}
 
 func (v XValidator) Validate(data interface{}) error {
 	validationErrors := []ErrorResponse{}
@@ -76,12 +77,13 @@ func (v XValidator) Validate(data interface{}) error {
 
 func LoginHandler(c *fiber.Ctx) error {
 	u := new(struct {
-		Login    string `validate:"required"`
-		Password string `validate:"required"`
+		Login    string `json:"login"`
+		Password string `json:"password"`
 	})
 	if err := c.BodyParser(u); err != nil {
 		return err
 	}
+
 	user := struct {
 		Login    string `validate:"required"`
 		Password string `validate:"required"`
@@ -91,7 +93,9 @@ func LoginHandler(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	_, err = userUC.Login(u.Login, u.Password, &UserRepository{Connection: PgsqlConnection.Connection})
+	uService := service.User{}
+	r := repository.UserRepository{Connection: PgsqlConnection.Connection}
+	_, err = uService.Login(u.Login, u.Password, &r)
 	if err != nil {
 		return err
 	}
@@ -113,25 +117,57 @@ func LoginHandler(c *fiber.Ctx) error {
 }
 
 func RegisterHandler(c *fiber.Ctx) error {
-	u := new(struct {
-		Login    string `validate:"required"`
-		Password string `validate:"required"`
+	body := new(struct {
+		Login      string `json:"login"`
+		Password   string `json:"password"`
+		FirstName  string `json:"firstName"`
+		SecondName string `json:"secondName"`
+		Birthdate  string `json:"birthdate"`
+		Biography  string `json:"biography"`
+		City       string `json:"city"`
 	})
-	if err := c.BodyParser(u); err != nil {
-		return err
-	}
-	user := struct {
-		Login    string `validate:"required"`
-		Password string `validate:"required"`
-	}{Login: u.Login, Password: u.Password}
 
-	err := xv.Validate(user)
-	if err != nil {
-		return err
+	if err := c.BodyParser(body); err != nil {
+		c.SendStatus(fiber.StatusBadRequest)
+		return c.JSON(fiber.Map{"status": "error", "message": err})
 	}
-	err = userUC.Register(u.Login, u.Password, &UserRepository{Connection: PgsqlConnection.Connection})
-	if err != nil {
-		return err
+
+	request := struct {
+		Login      string `validate:"required,min=6"`
+		Password   string `validate:"required,min=8"`
+		FirstName  string `validate:"required,min=2"`
+		SecondName string `validate:"required,min=2"`
+		Birthdate  string `validate:"required"`
+		Biography  string `validate:"required"`
+		City       string `validate:"required,min=2"`
+	}{Login: body.Login, Password: body.Password, FirstName: body.FirstName, SecondName: body.SecondName, Birthdate: body.Birthdate, Biography: body.Biography, City: body.City}
+
+	if err := xv.Validate(request); err != nil {
+		c.SendStatus(fiber.StatusBadRequest)
+		return c.JSON(fiber.Map{"status": "error", "message": err})
+	}
+
+	if _, err := time.Parse("01.02.2006", request.Birthdate); err != nil {
+		c.SendStatus(fiber.StatusBadRequest)
+		return c.JSON(fiber.Map{"status": "error", "message": errors.New("Invalid Birthdate field")})
+	}
+
+	uService := service.User{}
+	user := domain.User{
+		Login:      request.Login,
+		Password:   request.Password,
+		FirstName:  request.FirstName,
+		SecondName: request.SecondName,
+		Birthdate:  request.Birthdate,
+		Biography:  request.Biography,
+		City:       request.City,
+	}
+
+	conn := PgsqlConnection.Connection
+
+	if err := uService.Register(&user, &repository.UserRepository{Connection: conn}); err != nil {
+		c.SendStatus(fiber.StatusBadRequest)
+		return c.JSON(fiber.Map{"status": "error", "message": err})
 	}
 
 	return c.JSON(fiber.Map{"status": "success"})
@@ -144,13 +180,13 @@ func GetUserHanlder(c *fiber.Ctx) error {
 
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		return c.SendStatus(fiber.StatusBadRequest)
+		c.SendStatus(fiber.StatusBadRequest)
+		return c.JSON(fiber.Map{"status": "error", "message": err})
 	}
 
-	user, err := userUC.GetByID(id, &UserRepository{Connection: PgsqlConnection.Connection})
-	if err != nil {
-		return err
-	}
+	uService := service.User{}
 
-	return c.JSON(user)
+	profile, err := uService.GetByID(id, &repository.UserRepository{Connection: PgsqlConnection.Connection})
+
+	return c.JSON(fiber.Map{"status": "success", "data": profile})
 }

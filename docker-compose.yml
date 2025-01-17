@@ -11,7 +11,8 @@ services:
     ports:
       - '8088:80'
     depends_on:
-      - highload-pgsql
+      highload-pgsql:
+        condition: service_healthy
     restart: unless-stopped
   highload-pgsql:
     build: 
@@ -38,7 +39,7 @@ services:
         - '-U'
         - '${PGSQL_USER}'
       retries: 3
-      timeout: 5s
+      timeout: 3s
     restart: unless-stopped
 
 volumes:
