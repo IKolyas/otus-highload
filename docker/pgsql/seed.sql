@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
     password VARCHAR(255),
     first_name VARCHAR(255) NULL,
     second_name VARCHAR(255) NULL,
+    gender SMALLINT default 0,
     birthdate DATE NULL,
     biography TEXT NULL,
     city VARCHAR(255) NULL

@@ -3,6 +3,7 @@ module github.com/IKolyas/otus-highload
 go 1.23.4
 
 require (
+	github.com/go-faker/faker/v4 v4.5.0
 	github.com/go-playground/validator v9.31.0+incompatible
 	github.com/gofiber/contrib/jwt v1.0.10
 	github.com/gofiber/fiber/v2 v2.52.6
@@ -29,5 +30,6 @@ require (
 	github.com/valyala/fasthttp v1.58.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 )

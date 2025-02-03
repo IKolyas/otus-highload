@@ -1,10 +1,7 @@
 package config
 
 import (
-	"log"
 	"os"
-
-	"github.com/joho/godotenv"
 )
 
 type (
@@ -20,13 +17,6 @@ type (
 		Dbname   string
 	}
 )
-
-func init() {
-	err := godotenv.Load("/app/.env")
-	if err != nil {
-		log.Fatalf("Some error occured. Err: %s", err)
-	}
-}
 
 func (c *AppConfig) Load() *AppConfig {
 	c.AppPort = os.Getenv("APP_PORT")

@@ -3,6 +3,8 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/IKolyas/otus-highload/internal/domain"
 )
@@ -33,16 +35,15 @@ func (r *UserRepository) GetAuthData(login string) (*domain.User, error) {
 }
 
 func (r *UserRepository) GetByID(id int) (*domain.User, error) {
-
 	if r.Connection == nil {
 		return nil, errors.New("database connection is nil")
 	}
 
 	user := domain.User{}
 
-	row := "SELECT id, login, first_name, second_name, birthdate, biography, city FROM users WHERE id = $1"
+	row := "SELECT id, login, first_name, second_name, gender, birthdate, biography, city FROM users WHERE id = $1"
 
-	err := r.Connection.QueryRow(row, id).Scan(&user.ID, &user.Login, &user.FirstName, &user.SecondName, &user.Birthdate, &user.Biography, &user.City)
+	err := r.Connection.QueryRow(row, id).Scan(&user.ID, &user.Login, &user.FirstName, &user.SecondName, &user.Gender, &user.Birthdate, &user.Biography, &user.City)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -54,43 +55,64 @@ func (r *UserRepository) GetByID(id int) (*domain.User, error) {
 	return &user, nil
 }
 
-func (r *UserRepository) GetBy(field string, value interface{}) (*domain.User, error) {
-
+func (r *UserRepository) Find(fields map[string]string) ([]domain.User, error) {
 	if r.Connection == nil {
 		return nil, errors.New("database connection is nil")
 	}
 
-	user := domain.User{}
+	// Строим динамический запрос
+	query := "SELECT id, login, first_name, second_name, gender, birthdate, biography, city FROM users WHERE "
+	var conditions []string
+	var args []interface{}
 
-	row := "SELECT id, login, first_name, second_name, birthdate, biography, city FROM users WHERE " + field + " = $1"
+	count := 1
+	for field, value := range fields {
+		conditions = append(conditions, field+" LIKE $"+strconv.Itoa(count))
+		args = append(args, value+"%")
+		count++
+	}
 
-	err := r.Connection.QueryRow(row, value).Scan(&user.ID, &user.Login, &user.FirstName, &user.SecondName, &user.Birthdate, &user.Biography, &user.City)
+	query += strings.Join(conditions, " AND ")
 
+	// Добавляем сортировку
+	query += " ORDER BY id"
+
+	rows, err := r.Connection.Query(query, args...)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []domain.User
+	for rows.Next() {
+		user := domain.User{}
+		if err := rows.Scan(&user.ID, &user.Login, &user.FirstName, &user.SecondName, &user.Gender, &user.Birthdate, &user.Biography, &user.City); err != nil {
+			return nil, err
 		}
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return &user, nil
+	return users, nil
 }
 
-func (r *UserRepository) Create(user *domain.User) error {
-
+func (r *UserRepository) Save(user *domain.User) (res int, err error) {
 	if r.Connection == nil {
-		return errors.New("DB connection error")
+		return 0, errors.New("DB connection error")
 	}
 
-	row := "INSERT INTO users (login, password, first_name, second_name, birthdate, biography, city) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id"
+	row := "INSERT INTO users (login, password, first_name, second_name, gender, birthdate, biography, city) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id"
 
 	lastInsert := 0
-	err := r.Connection.QueryRow(row, user.Login, user.Password, user.FirstName, user.SecondName, user.Birthdate, user.Biography, user.City).Scan(&lastInsert)
+	err = r.Connection.QueryRow(row, user.Login, user.Password, user.FirstName, user.SecondName, &user.Gender, user.Birthdate, user.Biography, user.City).Scan(&lastInsert)
 	if err != nil {
-		return errors.New("DB error: " + err.Error())
+		return 0, errors.New("DB error: " + err.Error())
 	}
 
 	user.ID = int(lastInsert)
 
-	return nil
+	return user.ID, nil
 }

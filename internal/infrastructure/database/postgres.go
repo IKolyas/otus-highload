@@ -1,4 +1,4 @@
-package infrastructure
+package database
 
 import (
 	"database/sql"
@@ -8,10 +8,12 @@ import (
 	_ "github.com/lib/pq"
 )
 
-var PgsqlConnection Pgsql
-
 type Pgsql struct {
 	Connection *sql.DB
+}
+
+var PgConnection Pgsql = Pgsql{
+	Connection: nil,
 }
 
 func (p *Pgsql) NewConnection(config config.PgsqlConfig) (bool, error) {

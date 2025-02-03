@@ -1,7 +1,8 @@
 package infrastructure
 
 import (
-	jwtware "github.com/gofiber/contrib/jwt"
+	"github.com/IKolyas/otus-highload/internal/infrastructure/controller"
+	"github.com/IKolyas/otus-highload/internal/infrastructure/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/monitor"
@@ -10,16 +11,18 @@ import (
 func Router() *fiber.App {
 
 	router := fiber.New()
-	router.Post("/login", LoginHandler)
-	router.Post("/register", RegisterHandler)
-
-	router.Get("/metrics", monitor.New(monitor.Config{Title: "MyService Metrics Page"}))
 	router.Use(logger.New())
-	router.Use(jwtware.New(jwtware.Config{
-		SigningKey: jwtware.SigningKey{Key: []byte("секрет")},
-	}))
-
-	router.Get("/users/:id", GetUserHanlder)
+	//---------------------------------------------------------------------------------------//
+	router.Post("/login", controller.Login)
+	router.Post("/register", controller.Register)
+	router.Get("/metrics", monitor.New(monitor.Config{Title: "MyService Metrics Page"}))
+	//---------------------------------------------------------------------------------------//
+	router.Get("/faker/create/:count", middleware.JWTProtected, controller.FakerUser)
+	//---------------------------------------------------------------------------------------//
+	v1 := router.Group("/api/v1")
+	v1.Use(middleware.JWTProtected)
+	v1.Get("/users/find/firstName::firstName/secondName::secondName", controller.SearchUser)
+	v1.Get("/users/:id", controller.GetUser)
 
 	return router
 }

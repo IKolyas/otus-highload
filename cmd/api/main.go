@@ -5,9 +5,16 @@ import (
 
 	"github.com/IKolyas/otus-highload/config"
 	"github.com/IKolyas/otus-highload/internal/infrastructure"
+	"github.com/IKolyas/otus-highload/internal/infrastructure/database"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+
+	err := godotenv.Load("/app/.env")
+	if err != nil {
+		log.Println("Error loading .env file")
+	}
 
 	appConfig := config.AppConfig{}
 	appConfig.Load()
@@ -15,7 +22,8 @@ func main() {
 	pgsqlConfig := config.PgsqlConfig{}
 	pgsqlConfig.Load()
 
-	_, err := infrastructure.PgsqlConnection.NewConnection(pgsqlConfig)
+	database.PgConnection.NewConnection(pgsqlConfig)
+
 	if err != nil {
 		panic(err)
 	}

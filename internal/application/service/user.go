@@ -3,25 +3,28 @@ package service
 import (
 	"errors"
 
+	"github.com/IKolyas/otus-highload/internal/application/utils"
 	"github.com/IKolyas/otus-highload/internal/domain"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct{}
 
-func (u *User) Register(user *domain.User, r domain.Repository[domain.User]) error {
+func (u *User) Register(user *domain.User, r domain.Repository[domain.User]) (userId int, err error) {
 	passwd, err := bcrypt.GenerateFromPassword([]byte(user.Password), 14)
 	if err != nil {
-		return errors.New("Generate password error")
+		return 0, errors.New("Generate password error")
 	}
 
 	user.Password = string(passwd)
 
-	if err := r.Create(user); err != nil {
-		return err
+	userId, err = r.Save(user)
+
+	if err != nil {
+		return 0, err
 	}
 
-	return nil
+	return userId, nil
 }
 
 func (u *User) Login(login string, password string, r domain.UserRepository) (*domain.User, error) {
@@ -35,8 +38,9 @@ func (u *User) Login(login string, password string, r domain.UserRepository) (*d
 		return nil, errors.New("user not found")
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-	if err != nil {
+	res := utils.ComparePassword(user.Password, password)
+
+	if !res {
 		return nil, errors.New("incorrect password")
 	}
 
@@ -54,5 +58,38 @@ func (u *User) GetByID(id int, r domain.Repository[domain.User]) (map[string]int
 		return nil, errors.New("user not found")
 	}
 
-	return user.RequestData(), nil
+	return map[string]interface{}{
+		"id":         user.ID,
+		"login":      user.Login,
+		"firstName":  user.FirstName,
+		"secondName": user.SecondName,
+		"gender":     user.Gender,
+		"birthdate":  user.Birthdate,
+		"biography":  user.Biography,
+		"city":       user.City,
+	}, nil
+}
+
+func (u *User) Find(fields map[string]string, r domain.Repository[domain.User]) ([]interface{}, error) {
+
+	users, err := r.Find(fields)
+	if err != nil {
+		return nil, errors.New("Error get By")
+	}
+
+	var res []interface{}
+	for _, user := range users {
+		res = append(res, map[string]interface{}{
+			"id":         user.ID,
+			"login":      user.Login,
+			"firstName":  user.FirstName,
+			"secondName": user.SecondName,
+			"gender":     user.Gender,
+			"birthdate":  user.Birthdate,
+			"biography":  user.Biography,
+			"city":       user.City,
+		})
+	}
+
+	return res, nil
 }

@@ -1,14 +1,17 @@
-package infrastructure
+package controller
 
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/IKolyas/otus-highload/internal/application/service"
 	"github.com/IKolyas/otus-highload/internal/domain"
+	"github.com/IKolyas/otus-highload/internal/infrastructure/actions"
+	"github.com/IKolyas/otus-highload/internal/infrastructure/database"
 	"github.com/IKolyas/otus-highload/internal/infrastructure/repository"
 	"github.com/go-playground/validator"
 	"github.com/gofiber/fiber/v2"
@@ -75,7 +78,7 @@ func (v XValidator) Validate(data interface{}) error {
 	return nil
 }
 
-func LoginHandler(c *fiber.Ctx) error {
+func Login(c *fiber.Ctx) error {
 	u := new(struct {
 		Login    string `json:"login"`
 		Password string `json:"password"`
@@ -94,7 +97,7 @@ func LoginHandler(c *fiber.Ctx) error {
 		return err
 	}
 	uService := service.User{}
-	r := repository.UserRepository{Connection: PgsqlConnection.Connection}
+	r := repository.UserRepository{Connection: database.PgConnection.Connection}
 	_, err = uService.Login(u.Login, u.Password, &r)
 	if err != nil {
 		return err
@@ -108,7 +111,7 @@ func LoginHandler(c *fiber.Ctx) error {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	t, err := token.SignedString([]byte("секрет"))
+	t, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
 	if err != nil {
 		return c.SendStatus(fiber.StatusInternalServerError)
 	}
@@ -116,12 +119,13 @@ func LoginHandler(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"token": t})
 }
 
-func RegisterHandler(c *fiber.Ctx) error {
+func Register(c *fiber.Ctx) error {
 	body := new(struct {
 		Login      string `json:"login"`
 		Password   string `json:"password"`
 		FirstName  string `json:"firstName"`
 		SecondName string `json:"secondName"`
+		Gender     int    `json:"gender"`
 		Birthdate  string `json:"birthdate"`
 		Biography  string `json:"biography"`
 		City       string `json:"city"`
@@ -137,10 +141,11 @@ func RegisterHandler(c *fiber.Ctx) error {
 		Password   string `validate:"required,min=8"`
 		FirstName  string `validate:"required,min=2"`
 		SecondName string `validate:"required,min=2"`
+		Gender     int    `validate:"required,min=0,max=2"`
 		Birthdate  string `validate:"required"`
 		Biography  string `validate:"required"`
 		City       string `validate:"required,min=2"`
-	}{Login: body.Login, Password: body.Password, FirstName: body.FirstName, SecondName: body.SecondName, Birthdate: body.Birthdate, Biography: body.Biography, City: body.City}
+	}{Login: body.Login, Password: body.Password, FirstName: body.FirstName, Gender: body.Gender, SecondName: body.SecondName, Birthdate: body.Birthdate, Biography: body.Biography, City: body.City}
 
 	if err := xv.Validate(request); err != nil {
 		c.SendStatus(fiber.StatusBadRequest)
@@ -158,35 +163,69 @@ func RegisterHandler(c *fiber.Ctx) error {
 		Password:   request.Password,
 		FirstName:  request.FirstName,
 		SecondName: request.SecondName,
+		Gender:     request.Gender,
 		Birthdate:  request.Birthdate,
 		Biography:  request.Biography,
 		City:       request.City,
 	}
 
-	conn := PgsqlConnection.Connection
-
-	if err := uService.Register(&user, &repository.UserRepository{Connection: conn}); err != nil {
-		c.SendStatus(fiber.StatusBadRequest)
-		return c.JSON(fiber.Map{"status": "error", "message": err})
-	}
-
-	return c.JSON(fiber.Map{"status": "success"})
-}
-
-func GetUserHanlder(c *fiber.Ctx) error {
-
-	auth := c.Locals("user").(*jwt.Token)
-	_ = auth.Claims.(jwt.MapClaims)
-
-	id, err := strconv.Atoi(c.Params("id"))
+	id, err := uService.Register(&user, &repository.UserRepository{Connection: database.PgConnection.Connection})
 	if err != nil {
 		c.SendStatus(fiber.StatusBadRequest)
 		return c.JSON(fiber.Map{"status": "error", "message": err})
 	}
 
+	return c.JSON(fiber.Map{"status": "success", "ID": id})
+}
+
+// ------------------------- AUTH USER -------------------------
+
+func GetUser(c *fiber.Ctx) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		c.SendStatus(fiber.StatusBadRequest)
+		return c.JSON(fiber.Map{"status": "error", "message": errors.New("Not parse id")})
+	}
+
 	uService := service.User{}
 
-	profile, err := uService.GetByID(id, &repository.UserRepository{Connection: PgsqlConnection.Connection})
+	profile, err := uService.GetByID(id, &repository.UserRepository{Connection: database.PgConnection.Connection})
+	if err != nil {
+		c.SendStatus(fiber.StatusNotFound)
+		return c.JSON(fiber.Map{"status": "error", "message": errors.New("Not found user")})
+	}
 
 	return c.JSON(fiber.Map{"status": "success", "data": profile})
+}
+
+func SearchUser(c *fiber.Ctx) error {
+	fname := c.Params("firstName")
+	lname := c.Params("secondName")
+
+	fields := map[string]string{"first_name": fname, "second_name": lname}
+
+	uService := service.User{}
+	users, err := uService.Find(fields, &repository.UserRepository{Connection: database.PgConnection.Connection})
+	if err != nil {
+		c.SendStatus(fiber.StatusNotFound)
+		return c.JSON(fiber.Map{"status": "error", "message": errors.New("Not search user")})
+	}
+
+	return c.JSON(fiber.Map{"status": "success", "data": users})
+}
+
+func FakerUser(c *fiber.Ctx) error {
+	count, err := strconv.Atoi(c.Params("count"))
+	if err != nil {
+		c.SendStatus(fiber.StatusBadRequest)
+		return c.JSON(fiber.Map{"status": "error", "message": err})
+	}
+
+	ok, errors := actions.CreateRandomUsers(count, &repository.UserRepository{Connection: database.PgConnection.Connection})
+
+	return c.JSON(fiber.Map{"status": "success", "data": fiber.Map{
+		"created": ok,
+		"error":   errors,
+	}})
+
 }
